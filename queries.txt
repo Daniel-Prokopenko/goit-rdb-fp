@@ -1,0 +1,135 @@
+CREATE SCHEMA pandemic
+==============================
+use pandemic
+==============================
+SELECT COUNT(*) FROM infectious_cases
+==============================
+DROP TABLE IF EXISTS countries
+CREATE TABLE countries (
+    country_id INT AUTO_INCREMENT PRIMARY KEY,
+    country_name VARCHAR(255) UNIQUE NOT NULL,
+    country_code VARCHAR(10) UNIQUE NOT NULL
+) ENGINE=InnoDB;
+
+DROP TABLE IF EXISTS years
+CREATE TABLE years (
+    year_id INT AUTO_INCREMENT PRIMARY KEY,
+    year INT UNIQUE NOT NULL
+) ENGINE=InnoDB;
+
+DROP TABLE IF EXISTS diseases 
+CREATE TABLE diseases (
+    disease_id INT AUTO_INCREMENT PRIMARY KEY,
+    disease_name VARCHAR(255) UNIQUE NOT NULL
+) ENGINE=InnoDB;
+
+DROP TABLE IF EXISTS cases
+CREATE TABLE cases (
+    case_id INT AUTO_INCREMENT PRIMARY KEY,
+    country_id INT NOT NULL,
+    year_id INT NOT NULL,
+    disease_id INT NOT NULL,
+    case_count INT CHECK (case_count >= 0),
+    UNIQUE (country_id, year_id, disease_id),
+    FOREIGN KEY (country_id) REFERENCES countries(country_id) 
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (year_id) REFERENCES years(year_id) 
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (disease_id) REFERENCES diseases(disease_id) 
+        ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB;
+==============================
+INSERT INTO countries (country_name, country_code)
+SELECT DISTINCT Entity, Code 
+FROM infectious_cases
+WHERE Entity IS NOT NULL AND Code IS NOT NULL
+ON DUPLICATE KEY UPDATE country_name = VALUES(country_name);
+==============================
+INSERT INTO years (year)
+SELECT DISTINCT Year 
+FROM infectious_cases
+WHERE Year IS NOT NULL
+ON DUPLICATE KEY UPDATE year = VALUES(year);
+==============================
+INSERT INTO diseases (disease_name)
+SELECT column_name 
+FROM information_schema.columns 
+WHERE table_name = 'infectious_cases' 
+AND column_name NOT IN ('Entity', 'Code', 'Year')
+ON DUPLICATE KEY UPDATE disease_name = VALUES(disease_name);
+==============================
+INSERT INTO cases (country_id, year_id, disease_id, case_count)
+SELECT 
+    c.country_id, 
+    y.year_id, 
+    d.disease_id, 
+    CAST(NULLIF(ic.value, '') AS DECIMAL(15,6))
+FROM (
+    SELECT Entity, Year, 'cases_guinea_worm' AS disease_name, NULLIF(cases_guinea_worm, '') AS value FROM infectious_cases
+    UNION ALL
+    SELECT Entity, Year, 'Number_cholera_cases', NULLIF(Number_cholera_cases, '') FROM infectious_cases
+    UNION ALL
+    SELECT Entity, Year, 'Number_hiv', NULLIF(Number_hiv, '') FROM infectious_cases
+    UNION ALL
+    SELECT Entity, Year, 'Number_malaria', NULLIF(Number_malaria, '') FROM infectious_cases
+    UNION ALL
+    SELECT Entity, Year, 'Number_rabies', NULLIF(Number_rabies, '') FROM infectious_cases
+    UNION ALL
+    SELECT Entity, Year, 'Number_smallpox', NULLIF(Number_smallpox, '') FROM infectious_cases
+    UNION ALL
+    SELECT Entity, Year, 'Number_tuberculosis', NULLIF(Number_tuberculosis, '') FROM infectious_cases
+    UNION ALL
+    SELECT Entity, Year, 'Number_yaws', NULLIF(Number_yaws, '') FROM infectious_cases
+    UNION ALL
+    SELECT Entity, Year, 'polio_cases', NULLIF(polio_cases, '') FROM infectious_cases
+) ic
+JOIN countries c ON ic.Entity = c.country_name
+JOIN years y ON ic.Year = y.year
+JOIN diseases d ON d.disease_name = ic.disease_name
+WHERE ic.value IS NOT NULL AND ic.value >= 0
+ON DUPLICATE KEY UPDATE case_count = VALUES(case_count);
+==============================
+SELECT country_id, 
+	   AVG(case_count) AS avg_rabies,
+       MIN(case_count) AS min_rabies,
+       MAX(case_count) AS max_rabies
+FROM cases
+WHERE disease_id = (SELECT disease_id
+					FROM diseases
+                    WHERE disease_name = 'Number_rabies')
+GROUP BY country_id
+ORDER BY avg_rabies DESC
+LIMIT 10
+==============================
+ALTER TABLE years
+ADD jan_first DATE
+==============================
+SET SQL_SAFE_UPDATES = 0;
+
+UPDATE years
+SET jan_first = STR_TO_DATE(CONCAT(year, '-01-01'), '%Y-%m-%d');
+
+SET SQL_SAFE_UPDATES = 1;
+==============================
+ALTER TABLE years 
+ADD cur_date DATE,
+ADD year_difference INT;
+SET SQL_SAFE_UPDATES = 0;
+==============================
+UPDATE years
+SET cur_date = CURDATE(),
+    year_difference = TIMESTAMPDIFF(YEAR, jan_first, CURDATE());
+
+SET SQL_SAFE_UPDATES = 1;
+==============================
+DELIMITER //
+
+CREATE FUNCTION YEAR_DIFF_FROM_TODAY(input_year INT) 
+RETURNS INT DETERMINISTIC
+BEGIN
+    RETURN TIMESTAMPDIFF(YEAR, STR_TO_DATE(CONCAT(input_year, '-01-01'), '%Y-%m-%d'), CURDATE());
+END //
+
+DELIMITER ;
+==============================
+SELECT YEAR_DIFF_FROM_TODAY(2020), YEAR_DIFF_FROM_TODAY(2000)
