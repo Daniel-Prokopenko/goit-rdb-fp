@@ -89,15 +89,17 @@ JOIN diseases d ON d.disease_name = ic.disease_name
 WHERE ic.value IS NOT NULL AND ic.value >= 0
 ON DUPLICATE KEY UPDATE case_count = VALUES(case_count);
 ==============================
-SELECT country_id, 
+SELECT country_name, country_code,
 	   AVG(case_count) AS avg_rabies,
        MIN(case_count) AS min_rabies,
-       MAX(case_count) AS max_rabies
+       MAX(case_count) AS max_rabies,
+       SUM(case_count) AS sum_rabies
 FROM cases
+INNER JOIN countries ON cases.country_id = countries.country_id
 WHERE disease_id = (SELECT disease_id
 					FROM diseases
                     WHERE disease_name = 'Number_rabies')
-GROUP BY country_id
+GROUP BY country_name, country_code
 ORDER BY avg_rabies DESC
 LIMIT 10
 ==============================
